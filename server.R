@@ -1,12 +1,3 @@
-# TODO
-# github
-# portfolio https://jpsauve.shinyapps.io/climate-poverty
-    # 50% explained by pure geography, over which man cannot do anything!
-    # interpretability, not accuracy: lm
-    # mention github in portfolio page
-# bokeh
-# more visually pleasing
-
 library(shiny)
 library(arm)
 library(ggplot2)
