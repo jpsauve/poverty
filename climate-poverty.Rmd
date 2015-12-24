@@ -1,0 +1,255 @@
+---
+title: "Correlation climate-poverty"
+author: "Jacques Sauve"
+date: "21 de dezembro de 2015"
+output: html_document
+---
+
+# Executive Summary
+
+TODO
+- to be visually attractive, show relationships, not prediction. do a regression with up to 10 inputs
+- Things to try:
+    + plan interface
+        + inputs: region, log?, box-cox?, gdp/poverty, predictors to use
+        + outputs:
+            + if 1 predictor: scatter plot, R^2
+            + else: standardized slope, partial regressions, R^2, 
+            % explained by each predictor
+            + 3d plot if 2 predictors
+    + center and scale, box-cox
+    + include region and finish a first shiny app
+    + Pre-process data (log GDP, box-cox, or of other metric used)
+    + Better to use the temperature of the capital city
+    + Use adjusted PPP and constant dollars
+    + Use another index of poverty instead of gdp
+    + include other factors that man cannot change (eg. natural resources)
+    + Find clusters (Europe, ...)
+
+- is there a correlation between climate and poverty. choropleth, regression models, factors other than climate?
+- do the same inside europe, or countries like Italy, Brazil, ...
+- include idh (as predictor? as response?)
+- evolution over time
+- interactive shiny app
+- executive summary, how to use app
+- bokeh
+
+# Read data
+
+## Read in economic data.
+
+```{r}
+df.econ = read.csv('Popular indicators/Popular indicators_Data.csv')
+head(df.econ)
+unique(df.econ$Series.Name)
+
+# average over all years
+ss = subset(x = df.econ,
+            select = grep('^X', colnames(df.econ)))
+df.econ$mean = rowMeans(ss, na.rm = TRUE)
+
+gdp.per.capita = subset(x = df.econ, 
+                    subset = (Series.Name == 'GDP per capita (current US$)'))
+names(gdp.per.capita)[names(gdp.per.capita) == 'mean'] <- 'mean.gdp'
+dim(gdp.per.capita)
+head(gdp.per.capita)
+
+poverty = subset(x = df.econ,
+                 subset = (Series.Name == 'Poverty headcount ratio at national poverty lines (% of population)'))
+names(poverty)[names(poverty) == 'mean'] <- 'mean.poverty'
+dim(poverty)
+head(poverty)
+```
+
+## Read in temperature data.
+
+```{r message=FALSE, warning=FALSE}
+library(gdata)
+temp.df = read.xls(xls = 'cckp_historical_data_0.xls', sheet = 4, na.strings = 'NA')
+head(temp.df)
+dim(temp.df)
+```
+
+## Read in natural resources data.
+
+Natural resource rent is not completely independent of man becsuse it indicates that the natural resources are being exploited.
+Still, it seems to be a good proxy for natural resources that a country has.
+
+```{r}
+nr.df = read.csv('ny.gdp.totl.rt.zs_Indicator_en_csv_v2/ny.gdp.totl.rt.zs_Indicator_en_csv_v2.csv', skip=4)
+dim(nr.df)
+head(nr.df)
+unique(nr.df$Indicator.Name)
+# average over all years
+ss = subset(x = nr.df,
+            select = grep('^X', colnames(nr.df)))
+nr.df$mean.nr = rowMeans(ss, na.rm = TRUE)
+head(nr.df)
+```
+
+## Create main data frame
+
+```{r}
+comb.df = merge(gdp.per.capita, temp.df, 
+                by.x='Country.Code', by.y='ISO_3DIGIT', 
+                all=FALSE, sort=TRUE)
+comb.df = merge(comb.df, poverty, 
+                by.x='Country.Code', by.y='Country.Code', 
+                all=FALSE, sort=TRUE)
+comb.df = merge(comb.df, nr.df, 
+                by.x='Country.Code', by.y='Country.Code', 
+                all=FALSE, sort=TRUE)
+df = subset(comb.df, select=c('Country.Code', 'Annual_temp', 'mean.gdp', 'mean.poverty', 'mean.nr'))
+head(df)
+dim(df)
+```
+ 
+# Regressions
+
+- Use log of GDP, since many orders of magnitude are involved.
+
+```{r warning=FALSE}
+library(ggplot2)
+set.seed(1)
+cor(df$Annual_temp, log(df$mean.gdp), use='pairwise.complete.obs')
+g = ggplot(df, aes(Annual_temp, log(mean.gdp))) +
+    geom_point() +
+    geom_text(aes(label=Country.Code)) +
+    geom_smooth(method=lm)
+g
+fit = lm(log(mean.gdp) ~ Annual_temp , data=df)
+coef(fit)
+summary(fit)
+```
+
+- There is a correlation (-0.46) between log GDP per capita and temperature.
+    + Only about 20% of the variation is explained by temperature
+    I expected a lot more!
+    + Oil countries seem to have high GDP but maybe not have a rich population
+        + Maybe we need another response that better reflects how rich the average population is
+    + We clearly need more factors to explain GDP
+
+- Try another metric: poverty index
+
+```{r warning=FALSE}
+set.seed(1)
+cor(df$Annual_temp, df$mean.poverty, use='pairwise.complete.obs')
+g = ggplot(df, aes(Annual_temp, mean.poverty)) +
+    geom_point() +
+    geom_text(aes(label=Country.Code)) +
+    geom_smooth(method=lm)
+g
+fit = lm(log(mean.poverty) ~ Annual_temp , data=df)
+coef(fit)
+summary(fit)
+```
+
+- many countries are missing
+- temperature explains 20% of poverty
+- Essentially no difference in results between using gdp and poverty index as response
+
+## Regression with two predictors: temperature and natural resources
+
+```{r}
+set.seed(1)
+fit = lm(log(mean.gdp) ~ Annual_temp + mean.nr, data=df)
+coef(fit)
+summary(fit)
+```
+
+- Explains 21%, just a bit more
+- Try absolute natural resource rent, not percentage of GDP
+
+```{r}
+set.seed(1)
+df$mean.nr.abs = df$mean.nr * df$mean.gdp
+fit1 = lm(log(mean.gdp) ~ Annual_temp + log(mean.nr.abs), data=df)
+coef(fit1)
+summary(fit1)
+```
+
+- We're now explaining 39%, a lot more!
+
+## Extracting some additional metrics from the data
+
+```{r}
+# partition the R^2 in the various predictors
+# (careful: this may depend on the order of predictors.
+# It only really works if the predictors are orthogonal)
+percent.explained = function(model) {
+    an <- anova(model)
+    anss <- an$"Sum Sq"
+    return (cbind(an,PctExp=anss/sum(anss)*100))
+}
+print(percent.explained(fit1))
+```
+
+- Temperature explains 22% of the variation
+- Natural resources explain an additional 18%
+- We still have 60% unexplained
+- But for this little exercise, 2 predictors is enough
+
+- Let's redo the last model with normalized variables
+
+```{r}
+library(caret)
+set.seed(1)
+fit2 = train(log(mean.gdp) ~ Annual_temp + log(mean.nr.abs), 
+             data=df, method='lm',
+             preProcess = c('center', 'scale'))
+print(percent.explained(fit2$finalModel))
+```
+
+- Nothing really changes
+
+```{r}
+set.seed(1)
+fit3 = train(mean.gdp ~ Annual_temp + mean.nr.abs, 
+             data=df, method='lm',
+             preProcess = c('center', 'scale'))
+print(percent.explained(fit3$finalModel))
+```
+
+- No real change
+
+# Some plots
+
+```{r}
+library(car)
+library(ggplot2)
+# temperature plot, given the natural resources
+
+g = ggplot(df, aes(Annual_temp, log(mean.gdp))) +
+    geom_point() +
+    geom_text(aes(label=Country.Code)) +
+    geom_smooth(method=lm)
+g
+
+# Added-variable plots: regression using one variable, maintaining others constant
+avPlots(fit2$finalModel, main='Partial Regression Plots', labels=df[complete.cases(df),]$Country.Code, id.n=20, layout=c(2,1))
+
+# plot of standardized coefficients with 2 SD confidence intervals
+library(arm)
+coefplot(fit2$finalModel, varnames=c('Intercept', 'Average\nAnnual\nTemperature', 'log\nNatural\nResources'), cex.var=1, cex.pts=2, main='Standardized coefficients')
+
+# 3d plot
+library(scatterplot3d)
+s3d <- scatterplot3d(x=df$Annual_temp, y=log(df$mean.nr.abs), z=log(df$mean.gdp), type = "h", color = "blue",
+angle = 55, scale.y = 0.7, pch = 16, main = "Regression of GDP")
+s3d$plane3d(fit2$finalModel)
+```
+
+- 3D plot hard to see: doesn't add anything
+
+# References, Data Sources
+
+- GDP per capita
+    + http://databank.worldbank.org/data/reports.aspx?Code=NY.GDP.PCAP.CD&id=af3ce82b&report_name=Popular_indicators&populartype=series&ispopular=y#
+    + advanced options: NA preference = NA
+- Temperature data
+    + http://data.worldbank.org/data-catalog/cckp_historical_data
+- Natural Resource Rent data
+    + http://data.worldbank.org/indicator/NY.GDP.TOTL.RT.ZS
+- [How to attribute variance explained among predictors](http://stats.stackexchange.com/questions/79399/calculate-variance-explained-by-each-predictor-in-multiple-regression-using-r)
+- [How to visualize multiple regression](http://stats.stackexchange.com/questions/89747/how-to-describe-or-visualize-a-multiple-linear-regression-model)
+- [Country geo data](http://mledoze.github.io/countries/)

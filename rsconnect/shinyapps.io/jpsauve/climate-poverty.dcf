@@ -1,0 +1,9 @@
+name: climate-poverty
+account: jpsauve
+server: shinyapps.io
+appId: 75087
+bundleId: 338178
+url: https://jpsauve.shinyapps.io/climate-poverty
+when: 1450970643.81443
+asMultiple: FALSE
+asStatic: FALSE
