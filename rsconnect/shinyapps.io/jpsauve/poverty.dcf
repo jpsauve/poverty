@@ -2,8 +2,8 @@ name: poverty
 account: jpsauve
 server: shinyapps.io
 appId: 75180
-bundleId: 338193
+bundleId: 339032
 url: https://jpsauve.shinyapps.io/poverty
-when: 1450973116.0126
+when: 1451166777.95959
 asMultiple: FALSE
 asStatic: FALSE

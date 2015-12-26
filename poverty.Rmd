@@ -5,7 +5,10 @@ date: "21 de dezembro de 2015"
 output: html_document
 ---
 
-# Executive Summary
+**This file not to be considered**.
+This is a scratch file with some old code and observations.
+**This file not to be considered**.
+
 
 TODO
 - to be visually attractive, show relationships, not prediction. do a regression with up to 10 inputs
@@ -253,3 +256,10 @@ s3d$plane3d(fit2$finalModel)
 - [How to attribute variance explained among predictors](http://stats.stackexchange.com/questions/79399/calculate-variance-explained-by-each-predictor-in-multiple-regression-using-r)
 - [How to visualize multiple regression](http://stats.stackexchange.com/questions/89747/how-to-describe-or-visualize-a-multiple-linear-regression-model)
 - [Country geo data](http://mledoze.github.io/countries/)
+
+pe = percent.explained(fit$finalModel)
+ggplot(pe, aes(x=row.names(pe), y=PctExp)) +
+geom_bar(stat='identity', fill='blue') + 
+geom_text(aes(x=row.names(pe), y=PctExp+0.8, label=format(PctExp, digits=2)))
+xlab('Predictor') +
+ylab('Percent Variation Explained')

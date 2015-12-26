@@ -10,35 +10,51 @@ library(rjson)
 #   data.frame with one row per country and with the following columns:
 #       Country.Code: ISO 3166-1 alpha-3 (cca3) country code
 #       Region: Country continent
-#       Annual_temp: Average annual temperature
-#       mean.gdp: mean GDP over the years provided in the data
-#       mean.poverty: mean poverty rate over the years provided in the data
-#       mean.nr: mean natural resource rent as a percentage over the years provided in the data
-#       mean.nr.abs: mean.nr multiplied by mean.gdp
-#       landlocked: whether the country is land-locked
+#       Avg.Temperature: Average annual temperature
+#       GDP: mean GDP over the years provided in the data
+#       Poverty: mean poverty rate over the years provided in the data
+#       Percent.Natural.Resources: mean natural resource rent as a percentage over the years provided in the data
+#       Natural.Resources: Percent.Natural.Resources multiplied by GDP
+#       Landlocked: whether the country is land-locked
+# Data references
+#   GDP per capita, Poverty index:
+#       http://databank.worldbank.org/data/reports.aspx?Code=NY.GDP.PCAP.CD&id=af3ce82b&report_name=Popular_indicators&populartype=series&ispopular=y#
+#   Temperature data:
+#       http://data.worldbank.org/data-catalog/cckp_historical_data
+#   Natural Resource Rent data:
+#       http://data.worldbank.org/indicator/NY.GDP.TOTL.RT.ZS
+#   Landlocked status
+#       http://mledoze.github.io/countries/
+
 read.data = function() {
     # economic data
     df.econ = read.csv('Popular indicators/Popular indicators_Data.csv')
-    # average over all years
-    ss = subset(x = df.econ,
-                select = grep('^X', colnames(df.econ)))
+    # average columns over all years
+    ss = subset(x = df.econ, select = grep('^X', colnames(df.econ)))
     df.econ$mean = rowMeans(ss, na.rm = TRUE)
+    # get GDP
     gdp.per.capita = subset(x = df.econ, 
                             subset = (Series.Name == 'GDP per capita (current US$)'))
-    names(gdp.per.capita)[names(gdp.per.capita) == 'mean'] <- 'mean.gdp'
+    gdp.per.capita = gdp.per.capita[,c('Country.Code', 'mean')]
+    names(gdp.per.capita)= c('Country.Code', 'GDP')
+    # get Poverty index
     poverty = subset(x = df.econ,
                      subset = (Series.Name == 'Poverty headcount ratio at national poverty lines (% of population)'))
-    names(poverty)[names(poverty) == 'mean'] <- 'mean.poverty'
+    poverty = poverty[,c('Country.Code', 'mean')]
+    names(poverty)[names(poverty) == 'mean'] <- 'Poverty'
     
-    # temperature data
+    # Temperature data
     temp.df = read.xls(xls = 'cckp_historical_data_0.xls', sheet = 4, na.strings = 'NA')
+    temp.df = temp.df[,c('ISO_3DIGIT', 'Annual_temp')]
+    names(temp.df) = c('Country.Code', 'Avg.Temperature')
     
-    # natural resources
+    # Natural resources
     nr.df = read.csv('ny.gdp.totl.rt.zs_Indicator_en_csv_v2/ny.gdp.totl.rt.zs_Indicator_en_csv_v2.csv', skip=4)
     # average over all years
     ss = subset(x = nr.df,
                 select = grep('^X', colnames(nr.df)))
-    nr.df$mean.nr = rowMeans(ss, na.rm = TRUE)
+    nr.df$Percent.Natural.Resources = rowMeans(ss, na.rm = TRUE)
+    nr.df = nr.df[,c('Country.Code', 'Percent.Natural.Resources')]
 
     # read regional data
     json_file <- "mledoze-countries-6757eef/countries.json"
@@ -46,43 +62,44 @@ read.data = function() {
     region.df = data.frame(Country.Code = 
                                sapply(json_data, function(row) row$cca3),
                            Region=sapply(json_data, function(row) row$region),
-                           landlocked=sapply(json_data, function(row) row$landlocked))
+                           Landlocked=sapply(json_data, function(row) row$landlocked))
                            
     # combine into one frame
     comb.df = merge(gdp.per.capita, temp.df, 
-                    by.x='Country.Code', by.y='ISO_3DIGIT', 
-                    all=FALSE, sort=TRUE)
+                    by='Country.Code', all=FALSE, sort=TRUE)
     comb.df = merge(comb.df, poverty, 
-                    by.x='Country.Code', by.y='Country.Code', 
-                    all=FALSE, sort=TRUE)
+                    by='Country.Code', all=FALSE, sort=TRUE)
     comb.df = merge(comb.df, nr.df, 
-                    by.x='Country.Code', by.y='Country.Code', 
-                    all=FALSE, sort=TRUE)
+                    by='Country.Code', all=FALSE, sort=TRUE)
     comb.df = merge(comb.df, region.df, 
-                    by.x='Country.Code', by.y='Country.Code', 
-                    all=FALSE, sort=TRUE)
+                    by='Country.Code', all=FALSE, sort=TRUE)
     
     # generate final data frame
-    df = subset(comb.df, select=c('Country.Code', 'Region', 'Annual_temp', 
-                                  'mean.gdp', 'mean.poverty', 'mean.nr',
-                                  'landlocked'))
-    df$mean.nr.abs = df$mean.nr * df$mean.gdp
+    comb.df$Natural.Resources = comb.df$Percent.Natural.Resources * comb.df$GDP
     # if there's no GDP, the country is not usable
-    df = df[complete.cases(df$mean.gdp),]
-    return (df)
+    comb.df = comb.df[complete.cases(comb.df$GDP),]
+    return (comb.df)
 }
 
 # predictor.info
 # data.frame containing information for each 
 predictor.info = data.frame(
+    row.names = c('Avg.Temperature', 'log(Natural.Resources)', 'Landlocked'),
     label = c('Average Annual Temperature', 
               'log Natural Resources', 
               'Land-locked'),
     vertical.label = c('Average\nAnnual\nTemperature', 
                        'log\nNatural\nResources', 
-                       'Land-locked'),
-    row.names = c('Annual_temp', 'log(mean.nr.abs)', 'landlocked')
+                       'Land-locked')
 )
+
+# get.possible.predictors
+# return: all possible predictors for this application
+get.possible.predictors = function() {
+    p = row.names(predictor.info)
+    names(p) = predictor.info$label
+    return (p)
+}
 
 # get.predictor.label
 # param: pred, a predictor, one of the row.names of predictor.info
@@ -96,12 +113,6 @@ get.predictor.label = function(pred) {
 # return: a label, made to be narrower than the common label
 get.predictor.vertical.label = function(pred) {
     return (predictor.info[pred,]$vertical.label)
-}
-
-# get.possible.predictors
-# return: all possible predictors for this application
-get.possible.predictors = function() {
-    return (row.names(predictor.info))
 }
 
 # what.is.not.in
@@ -120,7 +131,7 @@ get.formula = function(predictors){
     if(length(what.is.not.in(predictors, get.possible.predictors())) > 0) {
         stop(simpleError(paste('unknown predictors', predictors)))
     }
-    formula = paste('log(mean.gdp) ~', paste(predictors,collapse = '+'))
+    formula = paste('log(GDP) ~', paste(predictors,collapse = '+'))
     return (formula)
 }
 
@@ -150,7 +161,9 @@ get.model = function(formula.str, df, seed=1) {
 percent.explained = function(model) {
     an <- anova(model)
     anss <- an$"Sum Sq"
-    return (cbind(an,PctExp=anss/sum(anss)*100))
+    pe = cbind(an,PctExp=anss/sum(anss)*100)
+#    row.names(pe) = c('Annual Temperature', 'Natural Resources', 'Landlocked', 'Residuals')
+    return (pe)
 }
 
 # get.region.names

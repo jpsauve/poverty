@@ -1,0 +1,73 @@
+Modeling poverty with predictors outside human control
+========================================================
+author: Jacques Sauve
+date: December 14, 2015
+
+Project for coursera course: Developing Data Products
+
+The problem
+========================================================
+
+In trying to understand where wealth comes from or, conversely, why
+some countries are poor, I asked myself two questions:
+
+- How many *poor* countries that are *cold* do I know? Very few.
+- How many *rich* countries that are *hot* do I know? Very few.
+
+Intuitively, a correlation appears to exist between temperature and poverty (or wealth, measured with per capita GDP).
+As a result, I defined my problem: 
+
+- "How much of a country's wealth can be explained by factors that humans cannot control (temperature, for example)?"
+
+The solution
+========================================================
+- Provide a web-based solution to examine the variation explained by a few predictors chosen to represent things that humans cannot control
+- A [shiny application](https://jpsauve.shinyapps.io/poverty) was developed to that end
+- Application parameters that can be altered:
+    + The desired predictors: Average annual temperature; 
+    Average rent obtained from natural resources;
+    Whether the country is landlocked or not
+    + The desired regions of the world to consider
+- Output
+    + The variation explained by each predictor
+    + Plots showing the data and a model fit 
+
+An example model and output
+========================================================
+
+Model: GDP ~ Annual Temperature + Natural Resources + Landlocked
+
+```{r plot,echo=FALSE,fig.width=10,fig.height=4.5,dpi=300}
+
+source('business-logic.R')
+df = read.data()
+formula = 'log(GDP) ~ Avg.Temperature+log(Natural.Resources)+Landlocked'
+fit = get.model(formula, df=df)
+pe = percent.explained(fit$finalModel)
+#print (pe[,'PctExp',drop=FALSE])
+ggplot(pe, aes(x=row.names(pe), y=PctExp)) +
+    geom_bar(stat='identity', fill='blue') + 
+    geom_text(aes(x=row.names(pe), y=PctExp+2, 
+                  label=format(PctExp, digits=2))) +
+    theme_bw() +
+    theme(axis.title.x = element_text(face='bold'),
+        axis.text.x = element_text(angle=45, hjust=1)) +
+    xlab('Predictor of wealth/poverty') +
+    ylab('Percent Variation Explained')
+```
+
+- Fully 50% of the variation in wealth is explained by factors humans cannot control!
+
+The effect of temperature
+========================================================
+
+```{r, echo=FALSE}
+library(ggplot2)
+ggplot(df, aes(Avg.Temperature, log(GDP))) +
+    geom_point(aes(colour = df$Region)) +
+    geom_text(aes(label=Country.Code)) +
+    geom_smooth(method=lm) +
+    ggtitle(paste('log GDP versus Average Annual Temperature')) +
+    xlab('Average Annual Temperature') +
+    ylab('log GDP')
+```

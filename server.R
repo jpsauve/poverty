@@ -13,12 +13,12 @@ shinyServer(function(input, output) {
         set.seed(1)
         # guard against missing input data
         if(length(input$predictors) == 0) {
-            predictors = "Annual_temp"
+            predictors = get.possible.predictors()[1]
         } else {
             predictors = input$predictors
         }
         if(length(input$regions) == 0) {
-            regions = "Africa"
+            regions = get.region.names()[1]
         } else {
             regions = input$regions
         }
@@ -42,7 +42,7 @@ shinyServer(function(input, output) {
         } else {
             # with one predictor: normal scatter plot with prediction interval
             pred = predictors[1]
-            ggplot(df, aes_string(pred, 'log(mean.gdp)')) +
+            ggplot(df, aes_string(pred, 'log(GDP)')) +
                 geom_point(aes(colour = df$Region)) +
                 geom_text(aes(label=Country.Code)) +
                 geom_smooth(method=lm) +
@@ -60,12 +60,28 @@ shinyServer(function(input, output) {
                         keep.intercept = FALSE,
                         modelnames = c('Regression Coefficients'))
     }, width=450, height = 200)
+    output$var.exp.plot <- renderPlot({
+        # bar chart for variation explained
+        res = result()
+        fit = res[[1]]
+        pe = percent.explained(fit$finalModel)
+        ggplot(pe, aes(x=row.names(pe), y=PctExp)) +
+            geom_bar(stat='identity', fill='blue') + 
+            geom_text(aes(x=row.names(pe), y=PctExp+2, 
+                          label=format(PctExp, digits=2))) +
+            theme_bw() +
+            theme(axis.title.x = element_text(face='bold'),
+                axis.text.x = element_text(angle=45, hjust=1)) +
+            xlab('Predictor of wealth/poverty') +
+            ylab('Percent Variation Explained')
+    }, width=300, height = 400)
     output$var.expl = renderTable({
         # a table of percentage of variation explained by the  predictors
         res = result()
         fit = res[[1]]
-        df = res[[2]]
-        percent.explained(fit$finalModel)[,'PctExp',drop=FALSE]
+        pve = percent.explained(fit$finalModel)[,'PctExp',drop=FALSE]
+        colnames(pve) = c('Percent Variation Explained')
+        pve
     })
     output$regions = renderText({
         # display the regions that were selected
